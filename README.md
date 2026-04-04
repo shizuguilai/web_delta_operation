@@ -1,16 +1,19 @@
 # 三角洲 · 账号台账
 
-一个手机友好的多账号数据管理网站，像在线 Excel 一样手动记录每个三角洲账号的哈币、仓库、邮件等信息，每次修改自动记录更新时间。
+一个手机友好的多账号数据管理网站，用卡片折叠形式记录每个三角洲账号的哈币、仓库、领取记录等信息，每次修改自动记录更新时间，支持历史快照随时回滚。
 
 ## 功能特性
 
-- **多账号管理**：每行对应一个账号，左侧账号名列固定，右侧数据列横向滑动
+- **卡片折叠视图**：默认展示全部账号信息，点击「编辑」展开输入框，无需横向滑动
+- **多账号管理**：每张卡片对应一个账号，所有字段一屏纵向展示
 - **完全手动填写**：不对接任何第三方接口，数据由用户自行录入
-- **更新时间追踪**：每个格子（含账号名）修改后独立记录「更新于 年月日 时:分」
-- **值不变不刷时间**：内容与库里相同时直接跳过，不误触更新时间戳
+- **更新时间追踪**：每个格子修改后独立记录「更新于 年月日 时:分」
+- **值不变不刷时间**：内容与库里相同时跳过，不误触更新时间戳
 - **自动保存**：停止输入 0.55 秒或失焦时自动保存，无需手动点按钮
-- **自由扩展列**：可随时添加「哈币、仓库、邮件、段位」等任意列，也可删除或重命名
-- **手机端适配**：全面屏安全区、≥44px 点击区域、`touch-pan-x` 横向滑动
+- **软删除 + 撤销**：删除行/列后底部 Toast 6 秒内可撤销
+- **历史快照回滚**：每次操作自动保存完整快照，可在「历史记录」面板一键回滚到任意时间点
+- **自由扩展列**：可随时添加、重命名、删除列
+- **手机端适配**：全面屏安全区、≥44px 点击区域，一屏纵览所有账号
 
 ## 技术栈
 
@@ -26,13 +29,14 @@
 web_delta_operation/
 ├── backend/
 │   ├── app.py              # Flask API 服务
+│   ├── seed_accounts.py    # 一次性账号数据导入脚本
 │   ├── requirements.txt    # Python 依赖
 │   └── delta_ledger.db     # SQLite 数据库（运行后自动生成）
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx         # 主界面组件
+│   │   ├── App.jsx         # 主界面组件（卡片折叠 + 历史面板）
 │   │   ├── main.jsx        # React 入口
-│   │   └── index.css       # Tailwind 基础样式
+│   │   └── index.css       # Tailwind 基础样式 + Toast 动画
 │   ├── index.html
 │   ├── package.json
 │   ├── vite.config.js
@@ -94,32 +98,173 @@ app.run(host="0.0.0.0", port=5000, debug=False)
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/api/state` | 获取全部列与行（含单元格） |
+| GET | `/api/health` | 健康检查 |
 | POST | `/api/columns` | 新增列 |
 | PATCH | `/api/columns/:id` | 重命名列 |
-| DELETE | `/api/columns/:id` | 删除列（含该列所有格） |
+| DELETE | `/api/columns/:id` | 软删除列 |
+| POST | `/api/columns/:id/restore` | 恢复已删除的列 |
 | POST | `/api/rows` | 新增账号行 |
 | PATCH | `/api/rows/:id` | 修改账号名（自动更新 `title_updated_at`） |
-| DELETE | `/api/rows/:id` | 删除行 |
+| DELETE | `/api/rows/:id` | 软删除行（数据保留，可恢复） |
+| POST | `/api/rows/:id/restore` | 恢复已删除的行 |
 | PATCH | `/api/cells` | 保存格子内容（仅内容变化时刷新 `updated_at`） |
-| GET | `/api/health` | 健康检查 |
+| GET | `/api/history` | 获取历史快照列表 |
+| POST | `/api/history/:id/restore` | 回滚到指定快照 |
+| DELETE | `/api/history` | 清空所有历史快照 |
 
 ## 数据库说明
 
 数据库文件为 `backend/delta_ledger.db`，SQLite 单文件，直接复制即可备份。
 
-三张表：
+四张表：
 
-- `sheet_column`：列定义（id、title、position）
-- `sheet_row`：账号行（id、title 账号名、title_updated_at、position）
-- `cell`：单元格（row_id、column_id、value、updated_at，联合唯一）
+| 表名 | 说明 | 关键字段 |
+|---|---|---|
+| `sheet_column` | 列定义 | id、title、position、deleted_at |
+| `sheet_row` | 账号行 | id、title（账号名）、title_updated_at、position、deleted_at |
+| `cell` | 单元格 | row_id、column_id、value、updated_at |
+| `history_snapshot` | 历史快照 | id、operation、description、snapshot_json、created_at |
+
+`deleted_at` 非空表示已软删除（可通过「撤销」或历史面板恢复）。
 
 新版本首次启动会自动执行 `ALTER TABLE` 补齐新字段，旧数据库无需手动迁移。
 
+---
+
+## 数据库直接查询（SQLite CLI）
+
+> 数据库文件路径：`backend/delta_ledger.db`
+
+### 进入交互式命令行
+
+```bash
+cd backend
+sqlite3 delta_ledger.db
+```
+
+进入后可输入 `.help` 查看帮助，`.quit` 退出。
+
+### 常用查询
+
+**列出所有账号名及哈币**
+
+```sql
+SELECT sr.title AS 账号,
+       MAX(CASE WHEN sc.title='哈币' THEN c.value END) AS 哈币
+FROM sheet_row sr
+LEFT JOIN cell c ON c.row_id = sr.id
+LEFT JOIN sheet_column sc ON sc.id = c.column_id
+WHERE sr.deleted_at IS NULL
+GROUP BY sr.id, sr.title
+ORDER BY sr.position;
+```
+
+**查看某个账号的全部数据**
+
+```sql
+SELECT sc.title AS 字段, c.value AS 内容, c.updated_at AS 更新时间
+FROM cell c
+JOIN sheet_row    sr ON sr.id = c.row_id
+JOIN sheet_column sc ON sc.id = c.column_id
+WHERE sr.title = '大号'
+  AND sr.deleted_at IS NULL
+ORDER BY sc.position;
+```
+
+**搜索仓库中含有某件物品的账号**
+
+```sql
+SELECT sr.title AS 账号, c.value AS 仓库内容
+FROM cell c
+JOIN sheet_row    sr ON sr.id = c.row_id
+JOIN sheet_column sc ON sc.id = c.column_id
+WHERE sc.title = '仓库'
+  AND c.value LIKE '%6甲%'
+  AND sr.deleted_at IS NULL;
+```
+
+**搜索已领取某皮肤的账号**
+
+```sql
+SELECT sr.title AS 账号, c.value AS 领取记录
+FROM cell c
+JOIN sheet_row    sr ON sr.id = c.row_id
+JOIN sheet_column sc ON sc.id = c.column_id
+WHERE sc.title = '领取记录'
+  AND c.value LIKE '%女医%'
+  AND sr.deleted_at IS NULL;
+```
+
+**查看最近 20 条历史快照**
+
+```sql
+SELECT id, operation, description,
+       datetime(created_at, 'localtime') AS 时间
+FROM history_snapshot
+ORDER BY id DESC
+LIMIT 20;
+```
+
+**统计各账号数据量（格子数）**
+
+```sql
+SELECT sr.title AS 账号, COUNT(c.id) AS 填写格数
+FROM sheet_row sr
+LEFT JOIN cell c ON c.row_id = sr.id
+WHERE sr.deleted_at IS NULL
+GROUP BY sr.id
+ORDER BY 填写格数 DESC;
+```
+
+### 常用 SQLite 元命令
+
+| 命令 | 说明 |
+|---|---|
+| `.tables` | 列出所有表 |
+| `.schema sheet_row` | 查看某张表的建表语句 |
+| `.headers on` | 查询时显示列名 |
+| `.mode column` | 对齐列宽展示 |
+| `.mode csv` | 以 CSV 格式输出 |
+| `.output data.csv` | 将后续查询输出到文件 |
+| `.output stdout` | 恢复输出到终端 |
+| `.quit` | 退出 |
+
+### 导出全部数据为 CSV
+
+```bash
+sqlite3 -header -csv backend/delta_ledger.db \
+  "SELECT sr.title AS 账号,
+          MAX(CASE WHEN sc.title='哈币'   THEN c.value END) AS 哈币,
+          MAX(CASE WHEN sc.title='仓库'   THEN c.value END) AS 仓库,
+          MAX(CASE WHEN sc.title='领取记录' THEN c.value END) AS 领取记录,
+          MAX(CASE WHEN sc.title='备注'   THEN c.value END) AS 备注
+   FROM sheet_row sr
+   LEFT JOIN cell c ON c.row_id = sr.id
+   LEFT JOIN sheet_column sc ON sc.id = c.column_id
+   WHERE sr.deleted_at IS NULL
+   GROUP BY sr.id ORDER BY sr.position;" \
+> accounts_export.csv
+echo "已导出到 accounts_export.csv"
+```
+
+### 重新导入初始数据
+
+如需重置数据库并重新导入所有账号：
+
+```bash
+cd backend
+python seed_accounts.py
+```
+
+> ⚠️ 此操作会**清空所有现有数据和历史快照**，慎用。
+
+---
+
 ## 默认列
 
-全新空库初始化时会自动创建三列：**哈币、仓库、邮件**。
+当前数据库列：**哈币、仓库、领取记录、备注**。
 
-账号名不占列，固定显示在表格左侧。可在表头输入框中随时重命名列，点击 `×` 删除列。
+账号名不占列，固定显示在卡片顶部。可在「列管理」中随时添加、重命名或删除列。
 
 ## 备份与迁移
 
