@@ -60,6 +60,7 @@ class SheetRow(db.Model):
     title            = db.Column(db.String(256), nullable=False, default="")
     title_updated_at = db.Column(db.DateTime, nullable=True)
     position         = db.Column(db.Integer, nullable=False, default=0)
+    color            = db.Column(db.String(32),  nullable=True, default=None)
     deleted_at       = db.Column(db.DateTime, nullable=True, default=None)
 
 
@@ -96,13 +97,18 @@ def _col_to_dict(c: SheetColumn) -> dict:
 
 def _row_to_dict(r: SheetRow, cells: list[Cell]) -> dict:
     cell_map: dict[str, dict] = {}
+    latest = r.title_updated_at  # 账号名最后修改时间，可能为 None
     for cell in cells:
         cell_map[str(cell.column_id)] = {"value": cell.value, "updated_at": _iso(cell.updated_at)}
+        if cell.updated_at and (latest is None or cell.updated_at > latest):
+            latest = cell.updated_at
     return {
         "id": r.id,
         "title": r.title,
         "title_updated_at": _iso(r.title_updated_at),
+        "last_updated_at": _iso(latest),  # 账号下任意内容最后修改时间
         "position": r.position,
+        "color": r.color,
         "cells": cell_map,
     }
 
@@ -194,6 +200,7 @@ def ensure_schema() -> None:
         for table, column, typedef in [
             ("sheet_row",    "title_updated_at", "DATETIME"),
             ("sheet_row",    "deleted_at",        "DATETIME"),
+            ("sheet_row",    "color",             "VARCHAR(32)"),
             ("sheet_column", "deleted_at",        "DATETIME"),
         ]:
             existing = {r[1] for r in conn.execute(text(f"PRAGMA table_info({table})"))}
@@ -288,19 +295,46 @@ def add_row():
 def patch_row(row_id: int):
     row = db.get_or_404(SheetRow, row_id)
     data = request.get_json(silent=True) or {}
+    changed = False
+
     if "title" in data:
         new_title = (data.get("title") or "").strip()[:256]
         if new_title != row.title:
             old_title = row.title
             row.title = new_title
             row.title_updated_at = utcnow()
-            db.session.commit()
-            take_snapshot("修改账号名", f"账号名「{old_title or '（空）'}」→「{new_title}」")
-            cells = Cell.query.filter_by(row_id=row.id).all()
-            return jsonify(_row_to_dict(row, cells))
+            changed = ("title", old_title, new_title)
+
+    if "color" in data:
+        new_color = data.get("color")
+        if new_color not in (None, "mint", "sky", "emerald", "amber", "orange", "rose", "violet", "red"):
+            new_color = None
+        row.color = new_color
+
     db.session.commit()
+
+    if changed:
+        old_title, new_title = changed[1], changed[2]
+        take_snapshot("修改账号名", f"账号名「{old_title or '（空）'}」→「{new_title}」")
+
     cells = Cell.query.filter_by(row_id=row.id).all()
     return jsonify(_row_to_dict(row, cells))
+
+
+@app.route("/api/rows/reorder", methods=["POST"])
+def reorder_rows():
+    """批量更新行顺序，body: {"order": [id, id, ...]}"""
+    data = request.get_json(silent=True) or {}
+    order = data.get("order", [])
+    if not isinstance(order, list) or not order:
+        return jsonify({"error": "order 必须是非空数组"}), 400
+    for pos, row_id in enumerate(order):
+        row = db.session.get(SheetRow, int(row_id))
+        if row:
+            row.position = pos
+    db.session.commit()
+    take_snapshot("调整顺序", f"重新排列了 {len(order)} 个账号的顺序")
+    return jsonify({"ok": True})
 
 
 @app.route("/api/rows/<int:row_id>", methods=["DELETE"])

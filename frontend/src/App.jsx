@@ -3,6 +3,34 @@ import { useCallback, useEffect, useRef, useState } from "react";
 const API = import.meta.env.VITE_API_BASE ?? "";
 const TOAST_DURATION = 6000;
 
+// ── 颜色预设 ──────────────────────────────────────────────────────────────────
+const COLORS = [
+  { key: null,      hex: "#64748b", name: "默认" },
+  { key: "sky",     hex: "#38bdf8", name: "蓝"   },
+  { key: "mint",    hex: "#2dd4bf", name: "青"   },
+  { key: "emerald", hex: "#34d399", name: "绿"   },
+  { key: "amber",   hex: "#fbbf24", name: "黄"   },
+  { key: "orange",  hex: "#fb923c", name: "橙"   },
+  { key: "rose",    hex: "#fb7185", name: "粉"   },
+  { key: "violet",  hex: "#a78bfa", name: "紫"   },
+  { key: "red",     hex: "#f87171", name: "红"   },
+];
+
+function colorHex(key) {
+  return COLORS.find((c) => c.key === key)?.hex ?? null;
+}
+
+function cardStyle(colorKey, isExpanded) {
+  const hex = colorHex(colorKey);
+  if (!hex || !colorKey) return {};
+  return {
+    borderColor:     isExpanded ? `${hex}55` : `${hex}28`,
+    borderLeftColor: `${hex}cc`,
+    borderLeftWidth: "3px",
+    backgroundColor: `${hex}0b`,
+  };
+}
+
 // ── 工具函数 ─────────────────────────────────────────────────────────────────
 
 function formatDate(iso) {
@@ -36,12 +64,13 @@ async function api(path, options = {}) {
 }
 
 function opStyle(op) {
-  if (op === "初始化")                         return "bg-slate-500/20 text-slate-300";
-  if (op.startsWith("新增"))                   return "bg-emerald-500/20 text-emerald-400";
-  if (op.startsWith("删除"))                   return "bg-red-500/20 text-red-400";
-  if (op.startsWith("恢复"))                   return "bg-sky-500/20 text-sky-400";
+  if (op === "初始化")                              return "bg-slate-500/20 text-slate-300";
+  if (op.startsWith("新增"))                        return "bg-emerald-500/20 text-emerald-400";
+  if (op.startsWith("删除"))                        return "bg-red-500/20 text-red-400";
+  if (op.startsWith("恢复"))                        return "bg-sky-500/20 text-sky-400";
   if (op.startsWith("修改") || op.startsWith("重命名")) return "bg-violet-500/20 text-violet-400";
-  if (op.startsWith("回滚"))                   return "bg-amber-500/20 text-amber-400";
+  if (op.startsWith("回滚"))                        return "bg-amber-500/20 text-amber-400";
+  if (op.startsWith("调整"))                        return "bg-orange-500/20 text-orange-400";
   return "bg-white/10 text-slate-300";
 }
 
@@ -63,13 +92,10 @@ function ToastBar({ toasts, onUndo, onDismiss }) {
             {t.onUndo && (
               <button onClick={() => onUndo(t)}
                       className="shrink-0 rounded-lg bg-mint-500/20 px-3 py-1.5 text-sm
-                                 font-semibold text-mint-400 transition hover:bg-mint-500/35">
-                撤销
-              </button>
+                                 font-semibold text-mint-400 hover:bg-mint-500/35">撤销</button>
             )}
             <button onClick={() => onDismiss(t.id)}
-                    className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:text-slate-300"
-                    aria-label="关闭">
+                    className="shrink-0 rounded-lg p-1.5 text-slate-500 hover:text-slate-300">
               <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" fill="none"
                    stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M1 1l12 12M13 1L1 13" />
@@ -104,10 +130,9 @@ function HistoryPanel({ open, items, loading, restoring, snapIdBeingRestored,
               {loading ? "加载中…" : `共 ${items.length} 条 · 点击「恢复至此」回滚`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onRefresh}
-                    className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-slate-200"
-                    title="刷新">
+          <div className="flex gap-2">
+            <button onClick={onRefresh} title="刷新"
+                    className="rounded-lg p-2 text-slate-400 hover:bg-white/10 hover:text-slate-200">
               <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none"
                    stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
                 <path d="M17 10a7 7 0 1 1-1.5-4.33M17 3v4h-4" />
@@ -122,7 +147,6 @@ function HistoryPanel({ open, items, loading, restoring, snapIdBeingRestored,
             </button>
           </div>
         </div>
-
         <div className="flex-1 overflow-y-auto overscroll-contain">
           {loading ? (
             <div className="flex h-40 items-center justify-center">
@@ -137,7 +161,7 @@ function HistoryPanel({ open, items, loading, restoring, snapIdBeingRestored,
                 const isRestoring = restoring && snapIdBeingRestored === item.id;
                 return (
                   <li key={item.id}
-                      className={`group border-b border-white/5 px-5 py-3.5 transition
+                      className={`border-b border-white/5 px-5 py-3.5 transition
                                   ${isCurrent ? "bg-mint-500/5" : "hover:bg-white/[0.025]"}`}>
                     <div className="flex items-start gap-3">
                       <div className="mt-1.5 flex flex-col items-center">
@@ -174,7 +198,7 @@ function HistoryPanel({ open, items, loading, restoring, snapIdBeingRestored,
                           className="shrink-0 self-center rounded-xl border border-white/15 px-3
                                      py-1.5 text-xs font-medium text-slate-200 transition
                                      hover:border-mint-500/40 hover:bg-mint-500/10 hover:text-mint-300
-                                     disabled:cursor-not-allowed disabled:opacity-40 active:scale-95">
+                                     disabled:opacity-40 active:scale-95">
                           {isRestoring ? (
                             <span className="flex items-center gap-1.5">
                               <svg className="h-3 w-3 animate-spin" viewBox="0 0 16 16" fill="none">
@@ -192,18 +216,14 @@ function HistoryPanel({ open, items, loading, restoring, snapIdBeingRestored,
             </ul>
           )}
         </div>
-
         {items.length > 0 && (
           <div className="border-t border-white/10 px-5 py-3">
             <button onClick={onClear} disabled={restoring}
                     className="w-full rounded-xl border border-red-500/20 py-2.5 text-sm
-                               text-red-400/80 transition hover:bg-red-500/10 hover:text-red-300
-                               disabled:opacity-40">
+                               text-red-400/80 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-40">
               清空所有历史记录
             </button>
-            <p className="mt-2 text-center text-[11px] text-slate-600">
-              清空后无法恢复 · 当前数据不受影响
-            </p>
+            <p className="mt-2 text-center text-[11px] text-slate-600">清空后无法恢复 · 当前数据不受影响</p>
           </div>
         )}
       </aside>
@@ -211,73 +231,160 @@ function HistoryPanel({ open, items, loading, restoring, snapIdBeingRestored,
   );
 }
 
+// ── 颜色选择器 ────────────────────────────────────────────────────────────────
+
+function ColorPicker({ value, onChange }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="shrink-0 text-xs text-slate-500">卡片颜色</span>
+      <div className="flex flex-wrap gap-2">
+        {COLORS.map((c) => {
+          const selected = value === c.key;
+          return (
+            <button
+              key={String(c.key)}
+              type="button"
+              onClick={() => onChange(c.key)}
+              title={c.name}
+              aria-label={`颜色：${c.name}`}
+              className={`relative h-6 w-6 rounded-full transition-transform
+                          hover:scale-110 active:scale-95
+                          ${selected ? "ring-2 ring-white/70 ring-offset-2 ring-offset-night-900 scale-110" : ""}`}
+              style={{ backgroundColor: c.hex }}
+            >
+              {selected && (
+                <svg viewBox="0 0 10 10" className="absolute inset-0 m-auto h-3 w-3"
+                     fill="none" stroke="rgba(0,0,0,0.6)" strokeWidth="2" strokeLinecap="round">
+                  <path d="M2 5l2.5 2.5 3.5-4" />
+                </svg>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── 账号卡片 ──────────────────────────────────────────────────────────────────
 
 function AccountCard({
-  row, columns, isExpanded,
-  onToggleExpand, onDelete,
+  row, columns, isExpanded, isFirst, isLast,
+  isDragging, isDragOver,
+  onToggleExpand, onDelete, onMoveUp, onMoveDown,
   onRowTitleChange, onRowTitleBlur,
-  onCellChange, onCellBlur,
+  onCellChange, onCellBlur, onColorChange,
+  onDragStart, onDragEnd, onDragOver, onDrop,
 }) {
   const colCount = columns.length;
+  const hex      = colorHex(row.color);
 
   return (
-    <div className={`overflow-hidden rounded-2xl border transition-all duration-200
-                     ${isExpanded
-                       ? "border-mint-500/30 bg-night-850/60 shadow-[0_0_0_1px_rgba(45,212,191,0.1)]"
-                       : "border-white/10 bg-night-850/40 hover:border-white/20"}`}>
+    <div
+      draggable={!isExpanded}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart(row.id); }}
+      onDragOver={(e)  => { e.preventDefault(); onDragOver(row.id); }}
+      onDrop={(e)      => { e.preventDefault(); onDrop(row.id); }}
+      onDragEnd={onDragEnd}
+      className={`overflow-hidden rounded-2xl border transition-all duration-200
+                  ${isDragging  ? "opacity-40 scale-[0.98] cursor-grabbing" : ""}
+                  ${isDragOver  ? "ring-2 ring-mint-500/60 ring-offset-2 ring-offset-night-950" : ""}
+                  ${isExpanded  ? "" : "hover:border-white/20"}`}
+      style={{
+        ...cardStyle(row.color, isExpanded),
+        ...((!row.color) ? { borderColor: isExpanded ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.1)",
+                              backgroundColor: "rgba(15,23,36,0.4)" } : {}),
+      }}
+    >
+      {/* ── 卡片头部 ── */}
+      <div className="flex items-center gap-2 px-3 py-3">
 
-      {/* 卡片头部：账号名 + 按钮 */}
-      <div className="flex items-center gap-2 px-4 py-3">
+        {/* 拖拽手柄（桌面） */}
+        <div className="hidden sm:flex shrink-0 cursor-grab active:cursor-grabbing select-none
+                        items-center justify-center rounded-lg p-1.5 text-slate-600
+                        hover:text-slate-400 transition"
+             title="拖拽排序">
+          <svg viewBox="0 0 10 16" className="h-4 w-2.5" fill="currentColor">
+            <circle cx="2.5" cy="2"  r="1.4" /><circle cx="7.5" cy="2"  r="1.4" />
+            <circle cx="2.5" cy="8"  r="1.4" /><circle cx="7.5" cy="8"  r="1.4" />
+            <circle cx="2.5" cy="14" r="1.4" /><circle cx="7.5" cy="14" r="1.4" />
+          </svg>
+        </div>
+
+        {/* 颜色圆点（只读模式，有颜色时显示） */}
+        {hex && !isExpanded && (
+          <div className="shrink-0 h-2.5 w-2.5 rounded-full shadow-sm"
+               style={{ backgroundColor: hex }} />
+        )}
+
+        {/* 账号名 */}
         {isExpanded ? (
           <input
             type="text"
             value={row.title ?? ""}
             onChange={(e) => onRowTitleChange(row.id, e.target.value)}
-            onBlur={(e) => onRowTitleBlur(row.id, e.target.value)}
+            onBlur={(e)   => onRowTitleBlur(row.id, e.target.value)}
             className="min-h-10 flex-1 rounded-xl border border-white/15 bg-night-900/80 px-3
                        py-2 text-base font-semibold text-white placeholder:text-slate-600
-                       focus:border-mint-500/50 focus:outline-none focus:ring-1
-                       focus:ring-mint-500/30"
+                       focus:border-mint-500/50 focus:outline-none focus:ring-1 focus:ring-mint-500/30"
             placeholder="账号名（如：主号）"
             autoComplete="off"
             autoFocus
           />
         ) : (
-          <button
-            onClick={onToggleExpand}
-            className="flex-1 text-left"
-            aria-label={`展开编辑 ${row.title || "未命名账号"}`}
-          >
-            <span className={`text-base font-semibold
-                              ${row.title ? "text-white" : "text-slate-500"}`}>
-              {row.title || "未命名账号"}
+          <button onClick={onToggleExpand} className="min-w-0 flex-1 text-left">
+            <span className="block truncate text-base font-semibold"
+                  style={hex ? { color: `color-mix(in srgb, ${hex} 55%, white)` } : { color: "white" }}>
+              {row.title || <span className="font-normal text-slate-500">未命名账号</span>}
             </span>
-            {row.title_updated_at && (
-              <span className="ml-2 text-[11px] text-slate-600">
-                {relativeTime(row.title_updated_at)}更新
+            {row.last_updated_at && (
+              <span className="block text-[11px] text-slate-500 mt-0.5">
+                {relativeTime(row.last_updated_at)}更新
               </span>
             )}
           </button>
         )}
 
+        {/* 手机上下移动（只读模式右侧） */}
+        {!isExpanded && (
+          <div className="flex sm:hidden items-center gap-0.5 shrink-0">
+            <button onClick={onMoveUp} disabled={isFirst}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500
+                               hover:bg-white/10 hover:text-slate-200 disabled:opacity-25 transition"
+                    aria-label="上移">
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 10l4-4 4 4" />
+              </svg>
+            </button>
+            <button onClick={onMoveDown} disabled={isLast}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500
+                               hover:bg-white/10 hover:text-slate-200 disabled:opacity-25 transition"
+                    aria-label="下移">
+              <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 6l4 4 4-4" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* 编辑 / 完成 */}
         <button
           onClick={onToggleExpand}
           className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold transition
                       ${isExpanded
                         ? "bg-mint-500 text-night-950 hover:bg-mint-400"
-                        : "border border-white/15 bg-white/5 text-slate-300 hover:bg-white/10"}`}
-        >
+                        : "border border-white/15 bg-white/5 text-slate-300 hover:bg-white/10"}`}>
           {isExpanded ? "完成" : "编辑"}
         </button>
 
+        {/* 删除 */}
         <button
           onClick={() => onDelete(row.id)}
-          className="shrink-0 rounded-xl p-2.5 text-slate-500 transition
-                     hover:bg-red-500/15 hover:text-red-300"
-          aria-label="删除该行"
-          title="删除（可撤销）"
-        >
+          className="shrink-0 rounded-xl p-2.5 text-slate-500 hover:bg-red-500/15
+                     hover:text-red-300 transition"
+          aria-label="删除该行（可撤销）">
           <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none"
                stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
             <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9" />
@@ -285,15 +392,43 @@ function AccountCard({
         </button>
       </div>
 
-      {/* 分割线 */}
-      <div className="mx-4 border-t border-white/5" />
+      <div className="mx-3 border-t border-white/5" />
 
-      {/* 字段区域 */}
+      {/* ── 字段区域 ── */}
       {colCount === 0 ? (
         <p className="px-4 py-4 text-sm text-slate-500">暂无列，请点击「添加列」。</p>
+
       ) : isExpanded ? (
-        /* 编辑模式：纵向排列输入框 */
+        /* 编辑模式 */
         <div className="space-y-4 p-4">
+
+          {/* 颜色选择器 */}
+          <ColorPicker value={row.color ?? null} onChange={(c) => onColorChange(row.id, c)} />
+
+          {/* 手机端上下移动（编辑模式内） */}
+          <div className="flex sm:hidden items-center gap-2">
+            <span className="text-xs text-slate-500 shrink-0">位置调整</span>
+            <button onClick={onMoveUp} disabled={isFirst}
+                    className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3
+                               py-1.5 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-30
+                               transition">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 10l4-4 4 4" />
+              </svg>上移
+            </button>
+            <button onClick={onMoveDown} disabled={isLast}
+                    className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3
+                               py-1.5 text-xs text-slate-300 hover:bg-white/10 disabled:opacity-30
+                               transition">
+              <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none"
+                   stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M4 6l4 4 4-4" />
+              </svg>下移
+            </button>
+          </div>
+
+          {/* 各字段输入 */}
           {columns.map((col) => {
             const cell = row.cells[String(col.id)] || { value: "", updated_at: null };
             return (
@@ -306,7 +441,7 @@ function AccountCard({
                   rows={2}
                   value={cell.value}
                   onChange={(e) => onCellChange(row.id, col.id, e.target.value)}
-                  onBlur={(e) => onCellBlur(row.id, col.id, e.target.value)}
+                  onBlur={(e)   => onCellBlur(row.id, col.id, e.target.value)}
                   className="w-full resize-y rounded-xl border border-white/10 bg-night-900/80
                              px-3 py-2.5 text-sm leading-relaxed text-slate-100
                              placeholder:text-slate-600 focus:border-mint-500/45
@@ -315,21 +450,16 @@ function AccountCard({
                   inputMode="text"
                 />
                 <p className="mt-1 text-[11px] text-slate-500">
-                  {cell.updated_at
-                    ? `更新于 ${formatDate(cell.updated_at)}`
-                    : "尚未保存过"}
+                  {cell.updated_at ? `更新于 ${formatDate(cell.updated_at)}` : "尚未保存过"}
                 </p>
               </div>
             );
           })}
         </div>
+
       ) : (
-        /* 只读模式：网格展示所有字段 */
-        <button
-          onClick={onToggleExpand}
-          className="w-full text-left"
-          aria-label="点击编辑"
-        >
+        /* 只读模式 */
+        <button onClick={onToggleExpand} className="w-full text-left">
           <div className={`grid gap-x-4 gap-y-3 p-4
                           ${colCount === 1 ? "grid-cols-1"
                             : colCount <= 4 ? "grid-cols-2"
@@ -349,10 +479,7 @@ function AccountCard({
               );
             })}
           </div>
-          {/* 点击提示 */}
-          <p className="pb-2.5 text-center text-[11px] text-slate-600">
-            点击卡片任意处可编辑
-          </p>
+          <p className="pb-2.5 text-center text-[11px] text-slate-600">点击任意处编辑</p>
         </button>
       )}
     </div>
@@ -362,42 +489,37 @@ function AccountCard({
 // ── 主应用 ────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [columns,     setColumns]     = useState([]);
-  const [rows,        setRows]        = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [err,         setErr]         = useState(null);
-  const [saving,      setSaving]      = useState(false);
-  const [toasts,      setToasts]      = useState([]);
+  const [columns,      setColumns]      = useState([]);
+  const [rows,         setRows]         = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [err,          setErr]          = useState(null);
+  const [saving,       setSaving]       = useState(false);
+  const [toasts,       setToasts]       = useState([]);
   const [expandedRows, setExpandedRows] = useState(new Set());
+  const [colMgrOpen,   setColMgrOpen]   = useState(false);
 
-  // 列管理面板展开
-  const [colMgrOpen,  setColMgrOpen]  = useState(false);
-
-  // 历史面板
   const [histOpen,    setHistOpen]    = useState(false);
   const [histItems,   setHistItems]   = useState([]);
   const [histLoading, setHistLoading] = useState(false);
   const [restoring,   setRestoring]   = useState(false);
   const [restoringId, setRestoringId] = useState(null);
 
+  const [draggingId,  setDraggingId]  = useState(null);
+  const [dragOverId,  setDragOverId]  = useState(null);
+
   const timers      = useRef({});
   const titleTimers = useRef({});
   const toastTimers = useRef({});
 
-  // ── 数据加载 ───────────────────────────────────────────────────────────────
+  // ── 加载 ───────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
-    setErr(null);
-    setLoading(true);
+    setErr(null); setLoading(true);
     try {
-      const data = await api("/api/state");
-      setColumns(data.columns || []);
-      setRows(data.rows || []);
-    } catch (e) {
-      setErr(e.message);
-    } finally {
-      setLoading(false);
-    }
+      const d = await api("/api/state");
+      setColumns(d.columns || []); setRows(d.rows || []);
+    } catch (e) { setErr(e.message); }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -415,9 +537,9 @@ export default function App() {
     setToasts((p) => [...p, { id, label, onUndo }]);
   }, [dismissToast]);
 
-  const handleUndo = useCallback(async (toast) => {
-    dismissToast(toast.id);
-    try { await toast.onUndo(); } catch (e) { setErr(e.message); }
+  const handleUndo = useCallback(async (t) => {
+    dismissToast(t.id);
+    try { await t.onUndo(); } catch (e) { setErr(e.message); }
   }, [dismissToast]);
 
   // ── 历史面板 ───────────────────────────────────────────────────────────────
@@ -435,13 +557,10 @@ export default function App() {
     if (restoring) return;
     setRestoring(true); setRestoringId(snapId);
     try {
-      const data = await api(`/api/history/${snapId}/restore`, { method: "POST" });
-      setColumns(data.state.columns || []);
-      setRows(data.state.rows || []);
-      setExpandedRows(new Set());
-      setHistOpen(false);
-      showToast(`已回滚到「${label}」`);
-      loadHistory();
+      const d = await api(`/api/history/${snapId}/restore`, { method: "POST" });
+      setColumns(d.state.columns || []); setRows(d.state.rows || []);
+      setExpandedRows(new Set()); setHistOpen(false);
+      showToast(`已回滚到「${label}」`); loadHistory();
     } catch (e) { setErr(e.message); }
     finally { setRestoring(false); setRestoringId(null); }
   };
@@ -452,28 +571,32 @@ export default function App() {
     catch (e) { setErr(e.message); }
   };
 
-  // ── 单元格保存 ─────────────────────────────────────────────────────────────
+  // ── 单元格 ─────────────────────────────────────────────────────────────────
 
-  const flushSave = useCallback((rowId, columnId, value) => {
-    const key = `${rowId}-${columnId}`;
+  const flushSave = useCallback((rowId, colId, value) => {
+    const key = `${rowId}-${colId}`;
     if (timers.current[key]) { clearTimeout(timers.current[key]); delete timers.current[key]; }
     setSaving(true);
-    return api("/api/cells", {
-      method: "PATCH",
-      body: JSON.stringify({ row_id: rowId, column_id: columnId, value }),
-    })
-      .then((cell) => setRows((prev) => prev.map((r) => r.id !== rowId ? r : {
-        ...r,
-        cells: { ...r.cells, [String(columnId)]: { value: cell.value, updated_at: cell.updated_at ?? null } },
+    return api("/api/cells", { method: "PATCH", body: JSON.stringify({ row_id: rowId, column_id: colId, value }) })
+      .then((cell) => setRows((p) => p.map((r) => {
+        if (r.id !== rowId) return r;
+        const cellAt = cell.updated_at ?? null;
+        const lastAt = (!r.last_updated_at || (cellAt && cellAt > r.last_updated_at))
+          ? cellAt : r.last_updated_at;
+        return {
+          ...r,
+          cells: { ...r.cells, [String(colId)]: { value: cell.value, updated_at: cellAt } },
+          last_updated_at: lastAt,
+        };
       })))
       .catch((e) => setErr(e.message))
       .finally(() => setSaving(false));
   }, []);
 
-  const scheduleSave = useCallback((rowId, columnId, value) => {
-    const key = `${rowId}-${columnId}`;
+  const scheduleSave = useCallback((rowId, colId, value) => {
+    const key = `${rowId}-${colId}`;
     if (timers.current[key]) clearTimeout(timers.current[key]);
-    timers.current[key] = setTimeout(() => { delete timers.current[key]; flushSave(rowId, columnId, value); }, 550);
+    timers.current[key] = setTimeout(() => { delete timers.current[key]; flushSave(rowId, colId, value); }, 550);
   }, [flushSave]);
 
   const onCellChange = (rowId, colId, value) => {
@@ -488,7 +611,7 @@ export default function App() {
     flushSave(rowId, colId, value);
   };
 
-  // ── 账号名保存 ─────────────────────────────────────────────────────────────
+  // ── 账号名 ─────────────────────────────────────────────────────────────────
 
   const flushRowTitle = useCallback((rowId, title) => {
     const key = `t-${rowId}`;
@@ -496,7 +619,7 @@ export default function App() {
     setSaving(true);
     return api(`/api/rows/${rowId}`, { method: "PATCH", body: JSON.stringify({ title }) })
       .then((row) => setRows((p) => p.map((r) => r.id === rowId
-        ? { ...r, title: row.title, title_updated_at: row.title_updated_at ?? null } : r)))
+        ? { ...r, title: row.title, title_updated_at: row.title_updated_at ?? null, last_updated_at: row.last_updated_at ?? null } : r)))
       .catch((e) => setErr(e.message))
       .finally(() => setSaving(false));
   }, []);
@@ -517,65 +640,103 @@ export default function App() {
     flushRowTitle(rowId, title);
   };
 
-  // ── 列操作 ─────────────────────────────────────────────────────────────────
+  // ── 颜色 ───────────────────────────────────────────────────────────────────
+
+  const handleColorChange = useCallback(async (rowId, color) => {
+    setRows((p) => p.map((r) => r.id === rowId ? { ...r, color } : r));
+    try { await api(`/api/rows/${rowId}`, { method: "PATCH", body: JSON.stringify({ color }) }); }
+    catch (e) { setErr(e.message); }
+  }, []);
+
+  // ── 拖拽排序 ───────────────────────────────────────────────────────────────
+
+  const handleDragStart = useCallback((id) => setDraggingId(id), []);
+  const handleDragOver  = useCallback((id) => { if (id !== draggingId) setDragOverId(id); }, [draggingId]);
+  const handleDragEnd   = useCallback(() => { setDraggingId(null); setDragOverId(null); }, []);
+
+  const handleDrop = useCallback(async (targetId) => {
+    const fromId = draggingId;
+    setDraggingId(null); setDragOverId(null);
+    if (!fromId || fromId === targetId) return;
+    const next = [...rows];
+    const from = next.findIndex((r) => r.id === fromId);
+    const to   = next.findIndex((r) => r.id === targetId);
+    if (from === -1 || to === -1) return;
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setRows(next);
+    try {
+      await api("/api/rows/reorder", { method: "POST", body: JSON.stringify({ order: next.map((r) => r.id) }) });
+    } catch (e) { setErr(e.message); load(); }
+  }, [draggingId, rows, load]);
+
+  // ── 上下移动 ───────────────────────────────────────────────────────────────
+
+  const moveRow = useCallback(async (rowId, dir) => {
+    const idx = rows.findIndex((r) => r.id === rowId);
+    const to  = idx + dir;
+    if (to < 0 || to >= rows.length) return;
+    const next = [...rows];
+    [next[idx], next[to]] = [next[to], next[idx]];
+    setRows(next);
+    try {
+      await api("/api/rows/reorder", { method: "POST", body: JSON.stringify({ order: next.map((r) => r.id) }) });
+    } catch (e) { setErr(e.message); load(); }
+  }, [rows, load]);
+
+  // ── 列 ─────────────────────────────────────────────────────────────────────
 
   const addColumn = async () => {
     try { await api("/api/columns", { method: "POST", body: JSON.stringify({ title: "新列" }) }); await load(); }
     catch (e) { setErr(e.message); }
   };
-
   const renameColumn = async (colId, title) => {
     try {
       await api(`/api/columns/${colId}`, { method: "PATCH", body: JSON.stringify({ title }) });
       setColumns((p) => p.map((c) => c.id === colId ? { ...c, title } : c));
     } catch (e) { setErr(e.message); }
   };
-
   const removeColumn = async (colId) => {
-    const colData = columns.find((c) => c.id === colId);
-    if (!colData) return;
+    const col = columns.find((c) => c.id === colId);
+    if (!col) return;
     setColumns((p) => p.filter((c) => c.id !== colId));
     try {
       await api(`/api/columns/${colId}`, { method: "DELETE" });
-      showToast(`已删除列「${colData.title}」`, async () => {
+      showToast(`已删除列「${col.title}」`, async () => {
         await api(`/api/columns/${colId}/restore`, { method: "POST" }); await load();
       });
     } catch (e) {
-      setColumns((p) => [...p, colData].sort((a, b) => a.position - b.position || a.id - b.id));
+      setColumns((p) => [...p, col].sort((a, b) => a.position - b.position || a.id - b.id));
       setErr(e.message);
     }
   };
 
-  // ── 行操作 ─────────────────────────────────────────────────────────────────
+  // ── 行 ─────────────────────────────────────────────────────────────────────
 
   const addRow = async () => {
     try {
       await api("/api/rows", { method: "POST", body: JSON.stringify({ title: "" }) });
-      const data = await api("/api/state");
-      setColumns(data.columns || []);
-      setRows(data.rows || []);
-      // 新行自动展开编辑
-      const newRow = (data.rows || []).at(-1);
+      const d = await api("/api/state");
+      setColumns(d.columns || []); setRows(d.rows || []);
+      const newRow = (d.rows || []).at(-1);
       if (newRow) setExpandedRows((p) => new Set([...p, newRow.id]));
     } catch (e) { setErr(e.message); }
   };
-
   const removeRow = async (rowId) => {
-    const rowData = rows.find((r) => r.id === rowId);
-    if (!rowData) return;
+    const row = rows.find((r) => r.id === rowId);
+    if (!row) return;
     setRows((p) => p.filter((r) => r.id !== rowId));
     setExpandedRows((p) => { const s = new Set(p); s.delete(rowId); return s; });
     try {
       await api(`/api/rows/${rowId}`, { method: "DELETE" });
-      showToast(`已删除「${rowData.title?.trim() || "未命名账号"}」`, async () => {
+      showToast(`已删除「${row.title?.trim() || "未命名账号"}」`, async () => {
         await api(`/api/rows/${rowId}/restore`, { method: "POST" }); await load();
       });
     } catch (e) {
-      setRows((p) => [...p, rowData].sort((a, b) => a.position - b.position || a.id - b.id));
+      setRows((p) => [...p, row].sort((a, b) => a.position - b.position || a.id - b.id));
       setErr(e.message);
     }
   };
-
   const toggleExpand = (rowId) =>
     setExpandedRows((p) => { const s = new Set(p); s.has(rowId) ? s.delete(rowId) : s.add(rowId); return s; });
 
@@ -585,31 +746,32 @@ export default function App() {
     <div className="min-h-[100dvh] bg-gradient-to-b from-night-950 via-night-900 to-night-850 pb-10">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(45,212,191,0.12),transparent)]" />
 
-      {/* ── 顶部 ── */}
+      {/* 导航栏 */}
       <header className="relative z-10 border-b border-white/10 bg-night-900/80 px-4 py-4
                          backdrop-blur-xl pt-[max(1rem,env(safe-area-inset-top))]">
-        <div className="mx-auto max-w-2xl">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-mint-500/90">Delta · 台账</p>
-              <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
-                三角洲 · 账号管理表
-              </h1>
-            </div>
-            <button
-              onClick={openHistory}
-              className="flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5
-                         px-3 py-2.5 text-xs font-medium text-slate-200 transition
-                         hover:bg-white/10 active:scale-95">
-              <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none"
-                   stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-                <circle cx="10" cy="10" r="8" /><path d="M10 6v4l2.5 2.5" />
-              </svg>
-              历史记录
-            </button>
+        <div className="mx-auto max-w-2xl flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-mint-500/90">
+              Delta · 台账
+            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
+              三角洲 · 账号管理表
+            </h1>
           </div>
-          {saving && <p className="mt-2 text-xs text-mint-400/90">正在保存…</p>}
+          <button onClick={openHistory}
+                  className="flex items-center gap-1.5 rounded-xl border border-white/15
+                             bg-white/5 px-3 py-2.5 text-xs font-medium text-slate-200
+                             hover:bg-white/10 active:scale-95 transition">
+            <svg viewBox="0 0 20 20" className="h-3.5 w-3.5 shrink-0" fill="none"
+                 stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+              <circle cx="10" cy="10" r="8" /><path d="M10 6v4l2.5 2.5" />
+            </svg>
+            历史记录
+          </button>
         </div>
+        {saving && (
+          <p className="mx-auto mt-2 max-w-2xl text-xs text-mint-400/90">正在保存…</p>
+        )}
       </header>
 
       <main className="relative z-10 mx-auto max-w-2xl px-4 py-5 space-y-4">
@@ -620,32 +782,27 @@ export default function App() {
                className="flex items-start justify-between gap-3 rounded-xl border
                           border-red-500/30 bg-red-950/40 px-4 py-3 text-sm text-red-200">
             <span>{err}</span>
-            <button onClick={() => setErr(null)} className="shrink-0 text-red-400/70 hover:text-red-200">×</button>
+            <button onClick={() => setErr(null)} className="text-red-400/70 hover:text-red-200">×</button>
           </div>
         )}
 
         {/* 操作栏 */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={addRow}
-            className="flex-1 min-w-[8rem] min-h-11 rounded-xl bg-mint-500 px-4 text-sm
-                       font-semibold text-night-950 shadow-glow transition
-                       hover:bg-mint-400 active:scale-[0.98]">
+          <button onClick={addRow}
+                  className="flex-1 min-w-[8rem] min-h-11 rounded-xl bg-mint-500 px-4 text-sm
+                             font-semibold text-night-950 shadow-glow hover:bg-mint-400 active:scale-[0.98]">
             ＋ 添加账号行
           </button>
-          <button
-            onClick={() => setColMgrOpen((p) => !p)}
-            className={`min-h-11 rounded-xl border px-4 text-sm font-medium transition
-                        active:scale-[0.98]
-                        ${colMgrOpen
-                          ? "border-mint-500/40 bg-mint-500/10 text-mint-300"
-                          : "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"}`}>
+          <button onClick={() => setColMgrOpen((p) => !p)}
+                  className={`min-h-11 rounded-xl border px-4 text-sm font-medium transition
+                              ${colMgrOpen
+                                ? "border-mint-500/40 bg-mint-500/10 text-mint-300"
+                                : "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"}`}>
             列管理 {colMgrOpen ? "▲" : "▼"}
           </button>
-          <button
-            onClick={load}
-            className="min-h-11 rounded-xl border border-white/10 px-3 text-sm
-                       text-slate-400 hover:bg-white/5">
+          <button onClick={load}
+                  className="min-h-11 rounded-xl border border-white/10 px-3
+                             text-slate-400 hover:bg-white/5 transition">
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none"
                  stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
               <path d="M17 10a7 7 0 1 1-1.5-4.33M17 3v4h-4" />
@@ -653,11 +810,11 @@ export default function App() {
           </button>
         </div>
 
-        {/* 列管理展开区 */}
+        {/* 列管理 */}
         {colMgrOpen && (
           <div className="rounded-2xl border border-white/10 bg-night-850/40 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              列管理 · 点击名称可重命名，× 删除
+              列管理 · 点名称重命名，× 删除（可撤销）
             </p>
             <div className="flex flex-wrap gap-2">
               {columns.map((col) => (
@@ -667,33 +824,34 @@ export default function App() {
                   <input
                     defaultValue={col.title}
                     key={`chip-${col.id}-${col.title}`}
-                    onBlur={(e) => {
-                      const v = e.target.value.trim();
-                      if (v && v !== col.title) renameColumn(col.id, v);
-                    }}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== col.title) renameColumn(col.id, v); }}
                     className="w-16 bg-transparent text-sm text-white focus:outline-none
                                focus:w-24 transition-all"
-                    aria-label={`重命名列 ${col.title}`}
                   />
-                  <button
-                    onClick={() => removeColumn(col.id)}
-                    className="text-slate-500 hover:text-red-300 transition text-base leading-none"
-                    aria-label={`删除列 ${col.title}`}
-                    title="删除列（可撤销）">×</button>
+                  <button onClick={() => removeColumn(col.id)}
+                          className="text-slate-500 hover:text-red-300 text-base leading-none">×</button>
                 </div>
               ))}
-              <button
-                onClick={addColumn}
-                className="flex items-center gap-1 rounded-xl border border-dashed
-                           border-white/20 px-3 py-2 text-sm text-slate-400
-                           hover:border-mint-500/40 hover:text-mint-400 transition">
+              <button onClick={addColumn}
+                      className="flex items-center gap-1 rounded-xl border border-dashed
+                                 border-white/20 px-3 py-2 text-sm text-slate-400
+                                 hover:border-mint-500/40 hover:text-mint-400 transition">
                 ＋ 添加列
               </button>
             </div>
           </div>
         )}
 
-        {/* 内容区 */}
+        {/* 提示 */}
+        {!loading && rows.length > 0 && (
+          <p className="text-center text-[11px] text-slate-600">
+            <span className="hidden sm:inline">桌面：拖 ⠿ 手柄排序 · </span>
+            <span className="sm:hidden">点「编辑」可排序和换颜色 · </span>
+            点卡片进入编辑，可设置颜色
+          </p>
+        )}
+
+        {/* 账号卡片 */}
         {loading ? (
           <div className="flex h-48 items-center justify-center rounded-2xl border
                           border-white/10 bg-night-850/50">
@@ -707,18 +865,29 @@ export default function App() {
           </div>
         ) : (
           <div className="space-y-3">
-            {rows.map((row) => (
+            {rows.map((row, idx) => (
               <AccountCard
                 key={row.id}
                 row={row}
                 columns={columns}
                 isExpanded={expandedRows.has(row.id)}
+                isFirst={idx === 0}
+                isLast={idx === rows.length - 1}
+                isDragging={draggingId === row.id}
+                isDragOver={dragOverId === row.id}
                 onToggleExpand={() => toggleExpand(row.id)}
                 onDelete={removeRow}
+                onMoveUp={() => moveRow(row.id, -1)}
+                onMoveDown={() => moveRow(row.id, 1)}
                 onRowTitleChange={onRowTitleChange}
                 onRowTitleBlur={onRowTitleBlur}
                 onCellChange={onCellChange}
                 onCellBlur={onCellBlur}
+                onColorChange={handleColorChange}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
               />
             ))}
           </div>
@@ -734,15 +903,10 @@ export default function App() {
       <ToastBar toasts={toasts} onUndo={handleUndo} onDismiss={dismissToast} />
 
       <HistoryPanel
-        open={histOpen}
-        items={histItems}
-        loading={histLoading}
-        restoring={restoring}
-        snapIdBeingRestored={restoringId}
+        open={histOpen} items={histItems} loading={histLoading}
+        restoring={restoring} snapIdBeingRestored={restoringId}
         onClose={() => setHistOpen(false)}
-        onRestore={restoreSnapshot}
-        onClear={clearHistory}
-        onRefresh={loadHistory}
+        onRestore={restoreSnapshot} onClear={clearHistory} onRefresh={loadHistory}
       />
     </div>
   );
