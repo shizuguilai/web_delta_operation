@@ -507,9 +507,9 @@ export default function App() {
   const [draggingId,  setDraggingId]  = useState(null);
   const [dragOverId,  setDragOverId]  = useState(null);
 
-  const timers      = useRef({});
-  const titleTimers = useRef({});
-  const toastTimers = useRef({});
+  const pendingCells  = useRef({});  // "rowId-colId" -> { rowId, colId, value }
+  const pendingTitles = useRef({});  // rowId -> title
+  const toastTimers   = useRef({});
 
   // ── 加载 ───────────────────────────────────────────────────────────────────
 
@@ -571,74 +571,62 @@ export default function App() {
     catch (e) { setErr(e.message); }
   };
 
-  // ── 单元格 ─────────────────────────────────────────────────────────────────
-
-  const flushSave = useCallback((rowId, colId, value) => {
-    const key = `${rowId}-${colId}`;
-    if (timers.current[key]) { clearTimeout(timers.current[key]); delete timers.current[key]; }
-    setSaving(true);
-    return api("/api/cells", { method: "PATCH", body: JSON.stringify({ row_id: rowId, column_id: colId, value }) })
-      .then((cell) => setRows((p) => p.map((r) => {
-        if (r.id !== rowId) return r;
-        const cellAt = cell.updated_at ?? null;
-        const lastAt = (!r.last_updated_at || (cellAt && cellAt > r.last_updated_at))
-          ? cellAt : r.last_updated_at;
-        return {
-          ...r,
-          cells: { ...r.cells, [String(colId)]: { value: cell.value, updated_at: cellAt } },
-          last_updated_at: lastAt,
-        };
-      })))
-      .catch((e) => setErr(e.message))
-      .finally(() => setSaving(false));
-  }, []);
-
-  const scheduleSave = useCallback((rowId, colId, value) => {
-    const key = `${rowId}-${colId}`;
-    if (timers.current[key]) clearTimeout(timers.current[key]);
-    timers.current[key] = setTimeout(() => { delete timers.current[key]; flushSave(rowId, colId, value); }, 550);
-  }, [flushSave]);
+  // ── 单元格（仅本地更新，点「完成」时统一提交） ──────────────────────────────
 
   const onCellChange = (rowId, colId, value) => {
     setRows((p) => p.map((r) => r.id !== rowId ? r : {
       ...r, cells: { ...r.cells, [String(colId)]: { ...(r.cells[String(colId)] || {}), value } },
     }));
-    scheduleSave(rowId, colId, value);
+    pendingCells.current[`${rowId}-${colId}`] = { rowId, colId, value };
   };
-  const onCellBlur = (rowId, colId, value) => {
-    const key = `${rowId}-${colId}`;
-    if (timers.current[key]) { clearTimeout(timers.current[key]); delete timers.current[key]; }
-    flushSave(rowId, colId, value);
-  };
+  const onCellBlur = () => {};
 
-  // ── 账号名 ─────────────────────────────────────────────────────────────────
-
-  const flushRowTitle = useCallback((rowId, title) => {
-    const key = `t-${rowId}`;
-    if (titleTimers.current[key]) { clearTimeout(titleTimers.current[key]); delete titleTimers.current[key]; }
-    setSaving(true);
-    return api(`/api/rows/${rowId}`, { method: "PATCH", body: JSON.stringify({ title }) })
-      .then((row) => setRows((p) => p.map((r) => r.id === rowId
-        ? { ...r, title: row.title, title_updated_at: row.title_updated_at ?? null, last_updated_at: row.last_updated_at ?? null } : r)))
-      .catch((e) => setErr(e.message))
-      .finally(() => setSaving(false));
-  }, []);
-
-  const scheduleRowTitle = useCallback((rowId, title) => {
-    const key = `t-${rowId}`;
-    if (titleTimers.current[key]) clearTimeout(titleTimers.current[key]);
-    titleTimers.current[key] = setTimeout(() => { delete titleTimers.current[key]; flushRowTitle(rowId, title); }, 550);
-  }, [flushRowTitle]);
+  // ── 账号名（仅本地更新，点「完成」时统一提交） ──────────────────────────────
 
   const onRowTitleChange = (rowId, title) => {
     setRows((p) => p.map((r) => r.id === rowId ? { ...r, title } : r));
-    scheduleRowTitle(rowId, title);
+    pendingTitles.current[rowId] = title;
   };
-  const onRowTitleBlur = (rowId, title) => {
-    const key = `t-${rowId}`;
-    if (titleTimers.current[key]) { clearTimeout(titleTimers.current[key]); delete titleTimers.current[key]; }
-    flushRowTitle(rowId, title);
-  };
+  const onRowTitleBlur = () => {};
+
+  // ── 点「完成」时统一提交该行所有待保存变更 ────────────────────────────────────
+
+  const flushRowChanges = useCallback(async (rowId) => {
+    const cellKeys = Object.keys(pendingCells.current).filter((k) => k.startsWith(`${rowId}-`));
+    const pendingTitle = pendingTitles.current[rowId];
+    if (cellKeys.length === 0 && pendingTitle === undefined) return;
+
+    setSaving(true);
+    try {
+      await Promise.all(cellKeys.map((key) => {
+        const { colId, value } = pendingCells.current[key];
+        delete pendingCells.current[key];
+        return api("/api/cells", { method: "PATCH", body: JSON.stringify({ row_id: rowId, column_id: colId, value }) })
+          .then((cell) => setRows((p) => p.map((r) => {
+            if (r.id !== rowId) return r;
+            const cellAt = cell.updated_at ?? null;
+            const lastAt = (!r.last_updated_at || (cellAt && cellAt > r.last_updated_at)) ? cellAt : r.last_updated_at;
+            return {
+              ...r,
+              cells: { ...r.cells, [String(colId)]: { value: cell.value, updated_at: cellAt } },
+              last_updated_at: lastAt,
+            };
+          })));
+      }));
+
+      if (pendingTitle !== undefined) {
+        delete pendingTitles.current[rowId];
+        const updated = await api(`/api/rows/${rowId}`, { method: "PATCH", body: JSON.stringify({ title: pendingTitle }) });
+        setRows((p) => p.map((r) => r.id === rowId
+          ? { ...r, title: updated.title, title_updated_at: updated.title_updated_at ?? null, last_updated_at: updated.last_updated_at ?? null }
+          : r));
+      }
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   // ── 颜色 ───────────────────────────────────────────────────────────────────
 
@@ -737,8 +725,11 @@ export default function App() {
       setErr(e.message);
     }
   };
-  const toggleExpand = (rowId) =>
+  const toggleExpand = useCallback(async (rowId) => {
+    const wasExpanded = expandedRows.has(rowId);
+    if (wasExpanded) await flushRowChanges(rowId);
     setExpandedRows((p) => { const s = new Set(p); s.has(rowId) ? s.delete(rowId) : s.add(rowId); return s; });
+  }, [expandedRows, flushRowChanges]);
 
   // ── 渲染 ──────────────────────────────────────────────────────────────────
 
